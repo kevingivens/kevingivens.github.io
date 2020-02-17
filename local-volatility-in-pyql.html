@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en" prefix="og: http://ogp.me/ns# fb: https://www.facebook.com/2008/fbml">
+<head>
+    <title>Local Volatility in PyQL - Lost in the Lyceum</title>
+    <!-- Using the latest rendering mode for IE -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+
+    <link href="/theme/images/icons/favicon.ico" rel="icon">
+
+<link rel="canonical" href="/local-volatility-in-pyql.html">
+
+        <meta name="author" content="Kevin Givens" />
+        <meta name="keywords" content="QuantLib,Volatility" />
+        <meta name="description" content="Summary: Local Volatility Surface in PyQL Following on my previous post, I wanted to review the important concept of Local Volatility. Many books and articles 1, 2 are dedicated to discussing this topic. I won&#39;t go into great detail here, I just want to give a basic overview along with …" />
+
+        <meta property="og:site_name" content="Lost in the Lyceum" />
+        <meta property="og:type" content="article"/>
+        <meta property="og:title" content="Local Volatility in PyQL"/>
+        <meta property="og:url" content="/local-volatility-in-pyql.html"/>
+        <meta property="og:description" content="Summary: Local Volatility Surface in PyQL Following on my previous post, I wanted to review the important concept of Local Volatility. Many books and articles 1, 2 are dedicated to discussing this topic. I won&#39;t go into great detail here, I just want to give a basic overview along with …"/>
+        <meta property="article:published_time" content="2020-01-04" />
+            <meta property="article:section" content="Finance" />
+            <meta property="article:tag" content="QuantLib" />
+            <meta property="article:tag" content="Volatility" />
+            <meta property="article:author" content="Kevin Givens" />
+
+
+
+    <!-- Bootstrap -->
+        <link rel="stylesheet" href="/theme/css/bootstrap.flatly.min.css" type="text/css"/>
+    <link href="/theme/css/font-awesome.min.css" rel="stylesheet">
+
+    <link href="/theme/css/pygments/paraiso-dark.css" rel="stylesheet">
+    <link href="/theme/tipuesearch/tipuesearch.css" rel="stylesheet">
+    <link rel="stylesheet" href="/theme/css/style.css" type="text/css"/>
+
+
+
+</head>
+<body>
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+    <div class="container">
+        <div class="navbar-header">
+            <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-ex1-collapse">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a href="/" class="navbar-brand">
+Lost in the Lyceum            </a>
+        </div>
+        <div class="collapse navbar-collapse navbar-ex1-collapse">
+            <ul class="nav navbar-nav">
+                         <li><a href="/pages/about.html">
+                             About
+                          </a></li>
+            </ul>
+            <ul class="nav navbar-nav navbar-right">
+              <li><span>
+                <form class="navbar-search" action="/search.html">
+                  <input type="text" class="search-query" placeholder="Search" name="q" id="tipue_search_input" required>
+                </form></span>
+              </li>
+            </ul>
+        </div>
+        <!-- /.navbar-collapse -->
+    </div>
+</div> <!-- /.navbar -->
+
+<!-- Banner -->
+<!-- End Banner -->
+
+<!-- Content Container -->
+<div class="container">
+    <div class="row">
+        <div class="col-sm-9">
+    <section id="content">
+        <article>
+            <header class="page-header">
+                <h1>
+                    <a href="/local-volatility-in-pyql.html"
+                       rel="bookmark"
+                       title="Permalink to Local Volatility in PyQL">
+                        Local Volatility in PyQL
+                    </a>
+                </h1>
+            </header>
+            <div class="entry-content">
+                <div class="panel">
+                    <div class="panel-body">
+<footer class="post-info">
+    <span class="label label-default">Date</span>
+    <span class="published">
+        <i class="fa fa-calendar"></i><time datetime="2020-01-04T15:20:00-05:00"> Sat 04 January 2020</time>
+    </span>
+
+
+
+
+
+<span class="label label-default">Tags</span>
+	<a href="/tag/quantlib.html">QuantLib</a>
+        /
+	<a href="/tag/volatility.html">Volatility</a>
+    
+</footer><!-- /.post-info -->                    </div>
+                </div>
+                <p>Summary: Local Volatility Surface in PyQL</p>
+<p>Following on my previous <a href="lostinthelyceum.com/Black-Variance-Surface-in-PyQL.html">post</a>,
+I wanted to review the important concept of Local Volatility.
+Many <a href="https://books.google.com/books/about/The_Volatility_Surface.html?id=P7ASlvLRsKMC&amp;source=kp_book_description">books</a>
+and articles <a href="https://en.wikipedia.org/wiki/Local_volatility">1</a>, <a href="http://web.math.ku.dk/~rolf/teaching/ctff03/Gatheral.1.pdf">2</a> are dedicated
+to discussing this topic.  I won't go into great detail here, I just want to give a basic overview along with implementation details in PyQL.</p>
+<p>Essentially, the idea of Local Volatility is to identify a <em>level-dependent</em> diffusion that <em>exactly</em> reproduces market implied volatilities.  The contribution of <a href="https://web.archive.org/web/20120907114056/http://www.risk.net/data/risk/pdf/technical/2007/risk20_0707_technical_volatility.pdf">Dupire</a> was to prove that
+this diffusion is <em>unique</em>  while also providing a convenient technique for deriving it from market quotes.</p>
+<p>The full derivation of the local volatility function is given in section 2.2 and the appendix of <a href="http://web.math.ku.dk/~rolf/teaching/ctff03/Gatheral.1.pdf">2</a>.  Here, I'll just give a sketch of the approach.</p>
+<p>To begin, consider a generic, <em>level-dependent</em>, 1-D Brownian motion</p>
+<div class="math">$$
+\frac{\partial S}{S} = \mu(t, S)\partial t + \sigma(t,S)\partial W
+$$</div>
+<p>Note that, the volatility for this process is <strong>not</strong> itself stochastic.  We can use
+this process to model the diffusion on a equity spot price in the presence of
+a short rate <span class="math">\(r(t)\)</span> and a dividend yield <span class="math">\(D(t)\)</span>.  A European call option for this process
+then satisfies a modified version of the Black-Scholes equation:</p>
+<div class="math">$$
+\frac{\partial{C}}{\partial{t}} = \frac{\sigma^2K^2}{2}\frac{\partial^2C}{\partial K^2} + (r(t) - D(t))\left(C- K\frac{\partial{C}}{\partial{K}}\right)
+$$</div>
+<p>We can simplify this equation by writing <span class="math">\(C(S_0, K,T)\)</span> as a function of the forward price
+<span class="math">\(F_T=S_0\exp(\int_0^T\mu(t)dt) = S_0\exp(\int_0^T(r(t) - D(t))dt)\)</span>, (i.e. use the forward measure)</p>
+<p>In these units, Black-Scholes equation simplifies to</p>
+<div class="math">$$
+\frac{\partial C}{\partial t} = \frac{\sigma^2K^2}{2}\frac{\partial^2 C}{\partial K^2}
+$$</div>
+<p>or solving for the volatility gives Dupire's equation</p>
+<div class="math">$$
+\sigma^2(K,T) =  \frac{\frac{\partial C}{\partial T}}{\frac{1}{2}K^2\frac{\partial^2 C}{\partial K^2}}
+$$</div>
+<p>Market quotes are usually given in terms of Black-Scholes implied volatilities.
+We can express the local volatility in terms of these quantities by equating the
+price equations for the two models</p>
+<div class="math">$$
+C_{local}(S_0, K,T) = C_{BS}(S_0, K, \sigma_{BS}, T)
+$$</div>
+<p>The strategy is then to solve for the local volatility in terms of the Black-Scholes
+impliedvolatility since we have a closed form expression for the <span class="math">\(C_{BS}\)</span>.  The full derivation is given in section 2.2 of <a href="http://web.math.ku.dk/~rolf/teaching/ctff03/Gatheral.1.pdf">2</a>
+.  Here we just reproduce the results.</p>
+<p>Namely, using more convenient units, the Black-Scholes total variance</p>
+<div class="math">$$
+w(S_0,K,T) = \sigma^2_{BS}(S_0,K,T)T
+$$</div>
+<p>and log-moneyness
+</p>
+<div class="math">$$y = \ln\left(\frac{K}{F_T}\right)$$</div>
+<p>We can show that the local variance
+</p>
+<div class="math">$$v_{local} = \sigma^2(S_0, K,T)$$</div>
+<p>satisfies the following expression:
+</p>
+<div class="math">$$
+v_{local} = \frac{\frac{\partial w}{\partial T}}{1 - \frac{y}{w}\frac{\partial w}{\partial y} + \frac{1}{4}\left(-\frac{1}{4} - \frac{1}{w} + \frac{y^2}{w^2}\right)\left(\frac{\partial w}{\partial y}\right)^2 + \frac{1}{2}\left(\frac{\partial^2 w}{\partial y^2}\right)}
+$$</div>
+<p>Quantlib implements this equation in <code>ql.termstructure.volatility.equityfx.localvolsurface</code></p>
+<p>In the code excerpt below we, show the LocalVolSurface is used in PyQL.  It follows
+a similiar interface and BlackVarianceSurface given in the previous <a href="lostinthelyceum.com/Black-Variance-Surface-in-PyQL.html">post</a>.  </p>
+<div class="highlight"><pre><span></span><span class="n">calc_date</span> <span class="o">=</span> <span class="n">Date</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">2015</span><span class="p">)</span>
+<span class="n">Settings</span><span class="p">()</span><span class="o">.</span><span class="n">evaluation_date</span> <span class="o">=</span> <span class="n">calc_date</span>
+
+<span class="n">risk_free_rate</span> <span class="o">=</span> <span class="mf">0.01</span>
+<span class="n">dividend_rate</span> <span class="o">=</span> <span class="mf">0.0</span>
+
+<span class="n">day_count</span> <span class="o">=</span> <span class="n">Actual365Fixed</span><span class="p">()</span>
+<span class="n">calendar</span> <span class="o">=</span> <span class="n">UnitedStates</span><span class="p">()</span>
+
+<span class="n">flat_ts</span> <span class="o">=</span> <span class="n">FlatForward</span><span class="p">(</span><span class="n">calc_date</span><span class="p">,</span> <span class="n">risk_free_rate</span><span class="p">,</span> <span class="n">day_count</span><span class="p">)</span>
+<span class="n">dividend_ts</span> <span class="o">=</span> <span class="n">FlatForward</span><span class="p">(</span><span class="n">calc_date</span><span class="p">,</span> <span class="n">dividend_rate</span><span class="p">,</span> <span class="n">day_count</span><span class="p">)</span>
+
+<span class="n">expiration_dates</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="n">Date</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span><span class="mi">12</span><span class="p">,</span><span class="mi">2015</span><span class="p">),</span>
+    <span class="n">Date</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">2016</span><span class="p">),</span>
+    <span class="n">Date</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">2016</span><span class="p">),</span>
+    <span class="n">Date</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">2016</span><span class="p">),</span>
+    <span class="n">Date</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span><span class="mi">4</span><span class="p">,</span><span class="mi">2016</span><span class="p">)</span>
+<span class="p">]</span>
+
+<span class="n">strikes</span> <span class="o">=</span> <span class="p">[</span><span class="mf">527.50</span><span class="p">,</span> <span class="mf">560.46</span><span class="p">,</span> <span class="mf">593.43</span><span class="p">,</span> <span class="mf">626.40</span><span class="p">]</span>
+
+<span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+    <span class="p">[</span>
+        <span class="p">[</span><span class="mf">0.37819</span><span class="p">,</span><span class="mf">0.34450</span><span class="p">,</span><span class="mf">0.37419</span><span class="p">,</span><span class="mf">0.37498</span><span class="p">,</span><span class="mf">0.35941</span><span class="p">],</span>
+        <span class="p">[</span><span class="mf">0.34177</span><span class="p">,</span><span class="mf">0.31769</span><span class="p">,</span><span class="mf">0.35372</span><span class="p">,</span><span class="mf">0.35847</span><span class="p">,</span><span class="mf">0.34516</span><span class="p">],</span>
+        <span class="p">[</span><span class="mf">0.30394</span><span class="p">,</span><span class="mf">0.29330</span><span class="p">,</span><span class="mf">0.33729</span><span class="p">,</span><span class="mf">0.34475</span><span class="p">,</span><span class="mf">0.33296</span><span class="p">],</span>
+        <span class="p">[</span><span class="mf">0.27832</span><span class="p">,</span><span class="mf">0.27614</span><span class="p">,</span><span class="mf">0.32492</span><span class="p">,</span><span class="mf">0.33399</span><span class="p">,</span><span class="mf">0.32275</span><span class="p">]</span>
+    <span class="p">]</span>
+<span class="p">)</span>
+
+<span class="n">vols</span> <span class="o">=</span> <span class="n">Matrix</span><span class="o">.</span><span class="n">from_ndarray</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+
+<span class="n">black_var_surf</span> <span class="o">=</span> <span class="n">BlackVarianceSurface</span><span class="p">(</span><span class="n">calc_date</span><span class="p">,</span>
+                                      <span class="n">calendar</span><span class="p">,</span>
+                                      <span class="n">expiration_dates</span><span class="p">,</span>
+                                      <span class="n">strikes</span><span class="p">,</span>
+                                      <span class="n">vols</span><span class="p">,</span>
+                                      <span class="n">day_count</span><span class="p">)</span>
+
+<span class="n">spot</span> <span class="o">=</span> <span class="mf">659.37</span>
+<span class="n">strike</span> <span class="o">=</span> <span class="mf">600.0</span>
+<span class="n">expiry</span> <span class="o">=</span> <span class="mf">0.2</span> <span class="c1"># years</span>
+
+<span class="n">local_vol_surf</span> <span class="o">=</span> <span class="n">LocalVolSurface</span><span class="p">(</span><span class="n">black_var_surf</span><span class="p">,</span>
+                                 <span class="n">flat_ts</span><span class="p">,</span>
+                                 <span class="n">dividend_ts</span><span class="p">,</span>
+                                 <span class="n">spot</span><span class="p">)</span>
+
+<span class="k">print</span><span class="p">(</span><span class="s2">&quot;local vol: &quot;</span><span class="p">,</span> <span class="n">local_vol_surf</span><span class="o">.</span><span class="n">localVol</span><span class="p">(</span><span class="n">expiry</span><span class="p">,</span> <span class="n">strike</span><span class="p">))</span>
+</pre></div>
+
+
+<p>In the plots below, we can see what the LocalVolSurface looks like:</p>
+<p><img alt="png" src="/post5_files/LocalVol.png"></p>
+<p>Take a look at the PyQL bindings on my <a href="https://github.com/kevingivens/pyql">github</a>
+to see an example of the  <code>LocalVolSurface</code>. See you next time.</p>
+<script type="text/javascript">if (!document.getElementById('mathjaxscript_pelican_#%@#$@#')) {
+    var align = "center",
+        indent = "0em",
+        linebreak = "false";
+
+    if (false) {
+        align = (screen.width < 768) ? "left" : align;
+        indent = (screen.width < 768) ? "0em" : indent;
+        linebreak = (screen.width < 768) ? 'true' : linebreak;
+    }
+
+    var mathjaxscript = document.createElement('script');
+    mathjaxscript.id = 'mathjaxscript_pelican_#%@#$@#';
+    mathjaxscript.type = 'text/javascript';
+    mathjaxscript.src = 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.3/latest.js?config=TeX-AMS-MML_HTMLorMML';
+
+    var configscript = document.createElement('script');
+    configscript.type = 'text/x-mathjax-config';
+    configscript[(window.opera ? "innerHTML" : "text")] =
+        "MathJax.Hub.Config({" +
+        "    config: ['MMLorHTML.js']," +
+        "    TeX: { extensions: ['AMSmath.js','AMSsymbols.js','noErrors.js','noUndefined.js'], equationNumbers: { autoNumber: 'none' } }," +
+        "    jax: ['input/TeX','input/MathML','output/HTML-CSS']," +
+        "    extensions: ['tex2jax.js','mml2jax.js','MathMenu.js','MathZoom.js']," +
+        "    displayAlign: '"+ align +"'," +
+        "    displayIndent: '"+ indent +"'," +
+        "    showMathMenu: true," +
+        "    messageStyle: 'normal'," +
+        "    tex2jax: { " +
+        "        inlineMath: [ ['\\\\(','\\\\)'] ], " +
+        "        displayMath: [ ['$$','$$'] ]," +
+        "        processEscapes: true," +
+        "        preview: 'TeX'," +
+        "    }, " +
+        "    'HTML-CSS': { " +
+        "        availableFonts: ['STIX', 'TeX']," +
+        "        preferredFont: 'STIX'," +
+        "        styles: { '.MathJax_Display, .MathJax .mo, .MathJax .mi, .MathJax .mn': {color: 'inherit ! important'} }," +
+        "        linebreaks: { automatic: "+ linebreak +", width: '90% container' }," +
+        "    }, " +
+        "}); " +
+        "if ('default' !== 'default') {" +
+            "MathJax.Hub.Register.StartupHook('HTML-CSS Jax Ready',function () {" +
+                "var VARIANT = MathJax.OutputJax['HTML-CSS'].FONTDATA.VARIANT;" +
+                "VARIANT['normal'].fonts.unshift('MathJax_default');" +
+                "VARIANT['bold'].fonts.unshift('MathJax_default-bold');" +
+                "VARIANT['italic'].fonts.unshift('MathJax_default-italic');" +
+                "VARIANT['-tex-mathit'].fonts.unshift('MathJax_default-italic');" +
+            "});" +
+            "MathJax.Hub.Register.StartupHook('SVG Jax Ready',function () {" +
+                "var VARIANT = MathJax.OutputJax.SVG.FONTDATA.VARIANT;" +
+                "VARIANT['normal'].fonts.unshift('MathJax_default');" +
+                "VARIANT['bold'].fonts.unshift('MathJax_default-bold');" +
+                "VARIANT['italic'].fonts.unshift('MathJax_default-italic');" +
+                "VARIANT['-tex-mathit'].fonts.unshift('MathJax_default-italic');" +
+            "});" +
+        "}";
+
+    (document.body || document.getElementsByTagName('head')[0]).appendChild(configscript);
+    (document.body || document.getElementsByTagName('head')[0]).appendChild(mathjaxscript);
+}
+</script>
+            </div>
+            <!-- /.entry-content -->
+        </article>
+    </section>
+
+        </div>
+        <div class="col-sm-3" id="sidebar">
+            <aside>
+<!-- Sidebar -->
+<section class="well well-sm">
+  <ul class="list-group list-group-flush">
+
+<!-- Sidebar/Social -->
+<li class="list-group-item">
+  <h4><i class="fa fa-home fa-lg"></i><span class="icon-label">Social</span></h4>
+  <ul class="list-group" id="social">
+    <li class="list-group-item"><a href="https://twitter.com/kevinmgivens"><i class="fa fa-twitter-square fa-lg"></i> twitter</a></li>
+    <li class="list-group-item"><a href="https://www.linkedin.com/pub/kevin-m-givens/47/844/275"><i class="fa fa-linkedin-square fa-lg"></i> linkedin</a></li>
+    <li class="list-group-item"><a href="https://github.com/kevingivens"><i class="fa fa-github-square fa-lg"></i> github</a></li>
+  </ul>
+</li>
+<!-- End Sidebar/Social -->
+
+<!-- Sidebar/Categories -->
+<li class="list-group-item">
+  <h4><i class="fa fa-home fa-lg"></i><span class="icon-label">Categories</span></h4>
+  <ul class="list-group" id="categories">
+    <li class="list-group-item">
+      <a href="/category/finance.html"><i class="fa fa-folder-open fa-lg"></i>Finance</a>
+    </li>
+  </ul>
+</li>
+<!-- End Sidebar/Categories -->
+  </ul>
+</section>
+<!-- End Sidebar -->            </aside>
+        </div>
+    </div>
+</div>
+<!-- End Content Container -->
+
+<footer>
+   <div class="container">
+      <hr>
+      <div class="row">
+         <div class="col-xs-10">&copy; 2020 Kevin Givens
+            &middot; Powered by <a href="https://github.com/getpelican/pelican-themes/tree/master/pelican-bootstrap3" target="_blank">pelican-bootstrap3</a>,
+            <a href="http://docs.getpelican.com/" target="_blank">Pelican</a>,
+            <a href="http://getbootstrap.com" target="_blank">Bootstrap</a>         </div>
+         <div class="col-xs-2"><p class="pull-right"><i class="fa fa-arrow-up"></i> <a href="#">Back to top</a></p></div>
+      </div>
+   </div>
+</footer>
+<script src="/theme/js/jquery.min.js"></script>
+
+<!-- Include all compiled plugins (below), or include individual files as needed -->
+<script src="/theme/js/bootstrap.min.js"></script>
+
+<!-- Enable responsive features in IE8 with Respond.js (https://github.com/scottjehl/Respond) -->
+<script src="/theme/js/respond.min.js"></script>
+
+
+
+
+</body>
+</html>

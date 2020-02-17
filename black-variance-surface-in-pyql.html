@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en" prefix="og: http://ogp.me/ns# fb: https://www.facebook.com/2008/fbml">
+<head>
+    <title>Black Variance Surface in PyQL - Lost in the Lyceum</title>
+    <!-- Using the latest rendering mode for IE -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+
+    <link href="/theme/images/icons/favicon.ico" rel="icon">
+
+<link rel="canonical" href="/black-variance-surface-in-pyql.html">
+
+        <meta name="author" content="Kevin Givens" />
+        <meta name="keywords" content="QuantLib,Volatility" />
+        <meta name="description" content="Summary: Building Black Variance Surfaces in PyQL In my previous post on Variance Swaps, I neglected to mention an important implementation detail. If you look the Variance Swap unittest or example script you&#39;ll see that replicating pricer requires a BlackVarianceSurface object. I had to build bindings for these in PyQL …" />
+
+        <meta property="og:site_name" content="Lost in the Lyceum" />
+        <meta property="og:type" content="article"/>
+        <meta property="og:title" content="Black Variance Surface in PyQL"/>
+        <meta property="og:url" content="/black-variance-surface-in-pyql.html"/>
+        <meta property="og:description" content="Summary: Building Black Variance Surfaces in PyQL In my previous post on Variance Swaps, I neglected to mention an important implementation detail. If you look the Variance Swap unittest or example script you&#39;ll see that replicating pricer requires a BlackVarianceSurface object. I had to build bindings for these in PyQL …"/>
+        <meta property="article:published_time" content="2020-01-04" />
+            <meta property="article:section" content="Finance" />
+            <meta property="article:tag" content="QuantLib" />
+            <meta property="article:tag" content="Volatility" />
+            <meta property="article:author" content="Kevin Givens" />
+
+
+
+    <!-- Bootstrap -->
+        <link rel="stylesheet" href="/theme/css/bootstrap.flatly.min.css" type="text/css"/>
+    <link href="/theme/css/font-awesome.min.css" rel="stylesheet">
+
+    <link href="/theme/css/pygments/paraiso-dark.css" rel="stylesheet">
+    <link href="/theme/tipuesearch/tipuesearch.css" rel="stylesheet">
+    <link rel="stylesheet" href="/theme/css/style.css" type="text/css"/>
+
+
+
+</head>
+<body>
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+    <div class="container">
+        <div class="navbar-header">
+            <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-ex1-collapse">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a href="/" class="navbar-brand">
+Lost in the Lyceum            </a>
+        </div>
+        <div class="collapse navbar-collapse navbar-ex1-collapse">
+            <ul class="nav navbar-nav">
+                         <li><a href="/pages/about.html">
+                             About
+                          </a></li>
+            </ul>
+            <ul class="nav navbar-nav navbar-right">
+              <li><span>
+                <form class="navbar-search" action="/search.html">
+                  <input type="text" class="search-query" placeholder="Search" name="q" id="tipue_search_input" required>
+                </form></span>
+              </li>
+            </ul>
+        </div>
+        <!-- /.navbar-collapse -->
+    </div>
+</div> <!-- /.navbar -->
+
+<!-- Banner -->
+<!-- End Banner -->
+
+<!-- Content Container -->
+<div class="container">
+    <div class="row">
+        <div class="col-sm-9">
+    <section id="content">
+        <article>
+            <header class="page-header">
+                <h1>
+                    <a href="/black-variance-surface-in-pyql.html"
+                       rel="bookmark"
+                       title="Permalink to Black Variance Surface in PyQL">
+                        Black Variance Surface in PyQL
+                    </a>
+                </h1>
+            </header>
+            <div class="entry-content">
+                <div class="panel">
+                    <div class="panel-body">
+<footer class="post-info">
+    <span class="label label-default">Date</span>
+    <span class="published">
+        <i class="fa fa-calendar"></i><time datetime="2020-01-04T12:20:00-05:00"> Sat 04 January 2020</time>
+    </span>
+
+
+
+
+
+<span class="label label-default">Tags</span>
+	<a href="/tag/quantlib.html">QuantLib</a>
+        /
+	<a href="/tag/volatility.html">Volatility</a>
+    
+</footer><!-- /.post-info -->                    </div>
+                </div>
+                <p>Summary: Building Black Variance Surfaces in PyQL</p>
+<p>In my previous <a href="lostinthelyceum.com/Variance-Swaps-in-PyQL.html">post</a> on Variance
+Swaps, I neglected to mention an important implementation detail.  If you look
+the Variance Swap unittest or example script you'll see that replicating pricer
+requires a <code>BlackVarianceSurface</code> object.  I had to build bindings for these
+in PyQL so I thought I'd mention how they work.</p>
+<p><code>BlackVarianceSurface</code> is a volatility termstructure that implements different
+types of 2-d interpolation routines between implied volatility quotes. I included
+two types of interpolations from the Quantlib source code:</p>
+<ul>
+<li>Bilinear</li>
+<li>Bicubic</li>
+</ul>
+<p>To over simplify, Bilinear linearly interpolates between neighboring quotes.
+Bicubic uses a cubic spline routine (third order polynomial) to smoothly
+interpolate between points.</p>
+<p>See for <a href="https://en.wikipedia.org/wiki/Bicubic_interpolation">wikipedia</a> for a
+nice summary of the differences between bicubic vs. bilinear interpolation.</p>
+<p>The python interface is given in the example below</p>
+<div class="highlight"><pre><span></span><span class="o">...</span>
+<span class="n">dc</span> <span class="o">=</span> <span class="n">Actual365Fixed</span><span class="p">()</span>
+<span class="n">calendar</span> <span class="o">=</span> <span class="n">UnitedStates</span><span class="p">()</span>
+
+<span class="n">calculation_date</span> <span class="o">=</span> <span class="n">Date</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">2015</span><span class="p">)</span>
+
+<span class="n">spot</span> <span class="o">=</span> <span class="mf">659.37</span>
+<span class="n">Settings</span><span class="o">.</span><span class="n">instance</span><span class="p">()</span><span class="o">.</span><span class="n">evaluation_date</span> <span class="o">=</span> <span class="n">calculation_date</span>
+
+<span class="n">dividend_yield</span> <span class="o">=</span> <span class="n">SimpleQuote</span><span class="p">(</span><span class="mf">0.0</span><span class="p">)</span>
+<span class="n">risk_free_rate</span> <span class="o">=</span> <span class="mf">0.01</span>
+<span class="n">dividend_rate</span> <span class="o">=</span> <span class="mf">0.0</span>
+<span class="c1"># bootstrap the yield/dividend/vol curves</span>
+<span class="n">flat_term_structure</span> <span class="o">=</span> <span class="n">FlatForward</span><span class="p">(</span>
+    <span class="n">reference_date</span><span class="o">=</span><span class="n">calculation_date</span><span class="p">,</span>
+    <span class="n">forward</span><span class="o">=</span><span class="n">risk_free_rate</span><span class="p">,</span>
+    <span class="n">daycounter</span><span class="o">=</span><span class="n">dc</span>
+<span class="p">)</span>
+
+<span class="n">flat_dividend_ts</span> <span class="o">=</span> <span class="n">FlatForward</span><span class="p">(</span>
+    <span class="n">reference_date</span><span class="o">=</span><span class="n">calculation_date</span><span class="p">,</span>
+    <span class="n">forward</span><span class="o">=</span><span class="n">dividend_yield</span><span class="p">,</span>
+    <span class="n">daycounter</span><span class="o">=</span><span class="n">dc</span>
+<span class="p">)</span>
+
+<span class="n">dates</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="n">Date</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span><span class="mi">12</span><span class="p">,</span><span class="mi">2015</span><span class="p">),</span>
+    <span class="n">Date</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span><span class="mi">1</span><span class="p">,</span><span class="mi">2016</span><span class="p">),</span>
+    <span class="n">Date</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span><span class="mi">2</span><span class="p">,</span><span class="mi">2016</span><span class="p">),</span>
+    <span class="n">Date</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span><span class="mi">3</span><span class="p">,</span><span class="mi">2016</span><span class="p">),</span>
+<span class="p">]</span>
+
+<span class="n">strikes</span> <span class="o">=</span> <span class="p">[</span><span class="mf">527.50</span><span class="p">,</span> <span class="mf">560.46</span><span class="p">,</span> <span class="mf">593.43</span><span class="p">,</span> <span class="mf">626.40</span><span class="p">]</span>
+
+<span class="n">data</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span>
+    <span class="p">[</span>
+        <span class="p">[</span><span class="mf">0.37819</span><span class="p">,</span> <span class="mf">0.34177</span><span class="p">,</span> <span class="mf">0.30394</span><span class="p">,</span> <span class="mf">0.27832</span><span class="p">],</span>
+        <span class="p">[</span><span class="mf">0.3445</span><span class="p">,</span> <span class="mf">0.31769</span><span class="p">,</span> <span class="mf">0.2933</span><span class="p">,</span> <span class="mf">0.27614</span><span class="p">],</span>
+        <span class="p">[</span><span class="mf">0.37419</span><span class="p">,</span> <span class="mf">0.35372</span><span class="p">,</span> <span class="mf">0.33729</span><span class="p">,</span> <span class="mf">0.32492</span><span class="p">],</span>
+        <span class="p">[</span><span class="mf">0.34912</span><span class="p">,</span> <span class="mf">0.34167</span><span class="p">,</span> <span class="mf">0.3355</span><span class="p">,</span> <span class="mf">0.32967</span><span class="p">],</span>
+        <span class="p">[</span><span class="mf">0.34891</span><span class="p">,</span> <span class="mf">0.34154</span><span class="p">,</span> <span class="mf">0.33539</span><span class="p">,</span> <span class="mf">0.3297</span><span class="p">]</span>
+    <span class="p">]</span>
+<span class="p">)</span>
+
+<span class="n">vols</span> <span class="o">=</span> <span class="n">Matrix</span><span class="o">.</span><span class="n">from_ndarray</span><span class="p">(</span><span class="n">data</span><span class="p">)</span>
+
+<span class="c1"># Build the Black Variance Surface</span>
+<span class="n">black_var_surf</span> <span class="o">=</span> <span class="n">BlackVarianceSurface</span><span class="p">(</span>
+    <span class="n">calculation_date</span><span class="p">,</span> <span class="n">NullCalendar</span><span class="p">(),</span> <span class="n">dates</span><span class="p">,</span> <span class="n">strikes</span><span class="p">,</span> <span class="n">vols</span><span class="p">,</span> <span class="n">dc</span>
+<span class="p">)</span>
+
+<span class="n">strike</span> <span class="o">=</span> <span class="mf">600.0</span>
+<span class="n">expiry</span> <span class="o">=</span> <span class="mf">0.2</span> <span class="c1"># years</span>
+
+<span class="c1"># The Surface interpolation routine can be set below (Bilinear is default)</span>
+<span class="n">black_var_surf</span><span class="o">.</span><span class="n">set_interpolation</span><span class="p">(</span><span class="n">Bilinear</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="s2">&quot;black vol bilinear: &quot;</span><span class="p">,</span> <span class="n">black_var_surf</span><span class="o">.</span><span class="n">blackVol</span><span class="p">(</span><span class="n">expiry</span><span class="p">,</span> <span class="n">strike</span><span class="p">))</span>
+<span class="n">black_var_surf</span><span class="o">.</span><span class="n">set_interpolation</span><span class="p">(</span><span class="n">Bicubic</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="s2">&quot;black vol bicubic: &quot;</span><span class="p">,</span> <span class="n">black_var_surf</span><span class="o">.</span><span class="n">blackVol</span><span class="p">(</span><span class="n">expiry</span><span class="p">,</span> <span class="n">strike</span><span class="p">))</span>
+</pre></div>
+
+
+<p>As a sanity checked, I re-implemented results from an excellent blog
+<a href="http://gouthamanbalaraman.com/blog/volatility-smile-heston-model-calibration-quantlib-python.html">post</a>
+by Gouthaman Balaraman.  In that post, the author builds a BlackVarianceSurface
+object using Quantlib's swig bindings.</p>
+<p>The plots for the same market data are given below:  </p>
+<p>For Bilinear interpolation, the surface looks like</p>
+<p><img alt="png" src="/post4_files/BlackVol_Bilinear.png"></p>
+<p>For Bicubic interpolation, the surface looks like</p>
+<p><img alt="png" src="/post4_files/BlackVol_Bicubic.png"></p>
+<p>As you can see from the plots, the bicubic is slightly smoother than bilinear.</p>
+<p>Take a look at the PyQL bindings on my <a href="https://github.com/kevingivens/pyql">github</a> page to see how the
+<code>BlackVarianceSurface</code> is implemented.  The script to generate the plots is <a href="https://github.com/kevingivens/Blog/tree/master/2020/BlackVol">here</a>  </p>
+<p>One thing that I clearly need to improve is the flexibility on the volatility data
+structure input to the BlackVarianceSurface constructor. It would be better to
+allow the <code>vols</code> data structure to be either a list of lists, a numpy array,
+or a QL Matrix object.  I'll try to fix that at some point.</p>
+<p>See you next time.</p>
+            </div>
+            <!-- /.entry-content -->
+        </article>
+    </section>
+
+        </div>
+        <div class="col-sm-3" id="sidebar">
+            <aside>
+<!-- Sidebar -->
+<section class="well well-sm">
+  <ul class="list-group list-group-flush">
+
+<!-- Sidebar/Social -->
+<li class="list-group-item">
+  <h4><i class="fa fa-home fa-lg"></i><span class="icon-label">Social</span></h4>
+  <ul class="list-group" id="social">
+    <li class="list-group-item"><a href="https://twitter.com/kevinmgivens"><i class="fa fa-twitter-square fa-lg"></i> twitter</a></li>
+    <li class="list-group-item"><a href="https://www.linkedin.com/pub/kevin-m-givens/47/844/275"><i class="fa fa-linkedin-square fa-lg"></i> linkedin</a></li>
+    <li class="list-group-item"><a href="https://github.com/kevingivens"><i class="fa fa-github-square fa-lg"></i> github</a></li>
+  </ul>
+</li>
+<!-- End Sidebar/Social -->
+
+<!-- Sidebar/Categories -->
+<li class="list-group-item">
+  <h4><i class="fa fa-home fa-lg"></i><span class="icon-label">Categories</span></h4>
+  <ul class="list-group" id="categories">
+    <li class="list-group-item">
+      <a href="/category/finance.html"><i class="fa fa-folder-open fa-lg"></i>Finance</a>
+    </li>
+  </ul>
+</li>
+<!-- End Sidebar/Categories -->
+  </ul>
+</section>
+<!-- End Sidebar -->            </aside>
+        </div>
+    </div>
+</div>
+<!-- End Content Container -->
+
+<footer>
+   <div class="container">
+      <hr>
+      <div class="row">
+         <div class="col-xs-10">&copy; 2020 Kevin Givens
+            &middot; Powered by <a href="https://github.com/getpelican/pelican-themes/tree/master/pelican-bootstrap3" target="_blank">pelican-bootstrap3</a>,
+            <a href="http://docs.getpelican.com/" target="_blank">Pelican</a>,
+            <a href="http://getbootstrap.com" target="_blank">Bootstrap</a>         </div>
+         <div class="col-xs-2"><p class="pull-right"><i class="fa fa-arrow-up"></i> <a href="#">Back to top</a></p></div>
+      </div>
+   </div>
+</footer>
+<script src="/theme/js/jquery.min.js"></script>
+
+<!-- Include all compiled plugins (below), or include individual files as needed -->
+<script src="/theme/js/bootstrap.min.js"></script>
+
+<!-- Enable responsive features in IE8 with Respond.js (https://github.com/scottjehl/Respond) -->
+<script src="/theme/js/respond.min.js"></script>
+
+
+
+
+</body>
+</html>

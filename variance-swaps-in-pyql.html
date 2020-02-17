@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en" prefix="og: http://ogp.me/ns# fb: https://www.facebook.com/2008/fbml">
+<head>
+    <title>Variance Swaps in PyQL - Lost in the Lyceum</title>
+    <!-- Using the latest rendering mode for IE -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+
+    <link href="/theme/images/icons/favicon.ico" rel="icon">
+
+<link rel="canonical" href="/variance-swaps-in-pyql.html">
+
+        <meta name="author" content="Kevin Givens" />
+        <meta name="keywords" content="QuantLib,PyQL,Pricing" />
+        <meta name="description" content="Summary: We review the Variance Swap replicating pricer in QuantLib and its implementation in PyQL Introduction Recently, I had the opportunity to extend the PyQL library to include variance swaps pricers. I thought I&#39;d take the chance to review the pricing of Variance Swaps in Quantlib (to refresh my own …" />
+
+        <meta property="og:site_name" content="Lost in the Lyceum" />
+        <meta property="og:type" content="article"/>
+        <meta property="og:title" content="Variance Swaps in PyQL"/>
+        <meta property="og:url" content="/variance-swaps-in-pyql.html"/>
+        <meta property="og:description" content="Summary: We review the Variance Swap replicating pricer in QuantLib and its implementation in PyQL Introduction Recently, I had the opportunity to extend the PyQL library to include variance swaps pricers. I thought I&#39;d take the chance to review the pricing of Variance Swaps in Quantlib (to refresh my own …"/>
+        <meta property="article:published_time" content="2020-01-04" />
+            <meta property="article:section" content="Finance" />
+            <meta property="article:tag" content="QuantLib" />
+            <meta property="article:tag" content="PyQL" />
+            <meta property="article:tag" content="Pricing" />
+            <meta property="article:author" content="Kevin Givens" />
+
+
+
+    <!-- Bootstrap -->
+        <link rel="stylesheet" href="/theme/css/bootstrap.flatly.min.css" type="text/css"/>
+    <link href="/theme/css/font-awesome.min.css" rel="stylesheet">
+
+    <link href="/theme/css/pygments/paraiso-dark.css" rel="stylesheet">
+    <link href="/theme/tipuesearch/tipuesearch.css" rel="stylesheet">
+    <link rel="stylesheet" href="/theme/css/style.css" type="text/css"/>
+
+
+
+</head>
+<body>
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+    <div class="container">
+        <div class="navbar-header">
+            <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-ex1-collapse">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a href="/" class="navbar-brand">
+Lost in the Lyceum            </a>
+        </div>
+        <div class="collapse navbar-collapse navbar-ex1-collapse">
+            <ul class="nav navbar-nav">
+                         <li><a href="/pages/about.html">
+                             About
+                          </a></li>
+            </ul>
+            <ul class="nav navbar-nav navbar-right">
+              <li><span>
+                <form class="navbar-search" action="/search.html">
+                  <input type="text" class="search-query" placeholder="Search" name="q" id="tipue_search_input" required>
+                </form></span>
+              </li>
+            </ul>
+        </div>
+        <!-- /.navbar-collapse -->
+    </div>
+</div> <!-- /.navbar -->
+
+<!-- Banner -->
+<!-- End Banner -->
+
+<!-- Content Container -->
+<div class="container">
+    <div class="row">
+        <div class="col-sm-9">
+    <section id="content">
+        <article>
+            <header class="page-header">
+                <h1>
+                    <a href="/variance-swaps-in-pyql.html"
+                       rel="bookmark"
+                       title="Permalink to Variance Swaps in PyQL">
+                        Variance Swaps in PyQL
+                    </a>
+                </h1>
+            </header>
+            <div class="entry-content">
+                <div class="panel">
+                    <div class="panel-body">
+<footer class="post-info">
+    <span class="label label-default">Date</span>
+    <span class="published">
+        <i class="fa fa-calendar"></i><time datetime="2020-01-04T10:20:00-05:00"> Sat 04 January 2020</time>
+    </span>
+
+
+
+
+
+<span class="label label-default">Tags</span>
+	<a href="/tag/quantlib.html">QuantLib</a>
+        /
+	<a href="/tag/pyql.html">PyQL</a>
+        /
+	<a href="/tag/pricing.html">Pricing</a>
+    
+</footer><!-- /.post-info -->                    </div>
+                </div>
+                <p>Summary: We review the Variance Swap replicating pricer in QuantLib and its implementation in PyQL</p>
+<h3>Introduction</h3>
+<p>Recently, I had the opportunity to extend the <a href="https://github.com/enthought/pyql">PyQL</a> library to include variance swaps pricers.  I thought I'd take the chance to review the pricing of Variance Swaps in Quantlib (to refresh my own memory if nothing else).</p>
+<p>As a reminder, a variance swap is a forward contract on realized variance, i.e.
+it has the following payoff at maturity</p>
+<div class="math">$$ N(\sigma_R^2{\tau} - K) $$</div>
+<p>Where <span class="math">\(N\)</span> is the notional, <span class="math">\(\sigma_R^2{\tau}\)</span> is the realized variance at maturity,
+<span class="math">\(\tau\)</span>, and <span class="math">\(K\)</span> is the strike. This instrument can be used to provide pure exposure to variance.  This is different then, for instance, a vanilla option which has variance (or volatility) exposure but also includes exposure to other risk factors such as the spot risk (delta).  </p>
+<p>Quantlib includes two different pricing engines, <code>ReplicatingVarianceSwapEngine</code>
+and <code>MCVarianceSwapEngine</code>.  As you might have guessed, <code>ReplicatingVarianceSwapEngine</code>
+uses a replicating portfolio to price a VarianceSwap and <code>MCVarainceSwapEngine</code>
+uses a Monte Carlo simulation. For this post, I'm going to focus on the
+replicating engine as the MCEngine is conventional and not terribly interesting.</p>
+<p>The replicating portfolio technique is described in thorough detail in <a href="https://www.semanticscholar.org/paper/More-than-You-ever-Wanted-to-Know-about-Volatility-Demeterfi-Derman/3d9cfbe5ff32fd805f79c85b1e48fa9ac84e9128">Derman</a> In essence, the idea of this (or any) replicating pricer is to reproduce the payoff of the variance swap using a portfolio of liquid vanilla instruments.<br>
+In <a href="https://www.semanticscholar.org/paper/More-than-You-ever-Wanted-to-Know-about-Volatility-Demeterfi-Derman/3d9cfbe5ff32fd805f79c85b1e48fa9ac84e9128">Derman</a>, the authors show that a replicating portfolio can be constructed from a weighted combination of European Calls and Puts.  We derive this
+portfolio in the next section.</p>
+<p>The derivation the the replicating portfolio is somewhat indirect.  The authors
+introduce a fictitious instrument known as log contract that exactly replicates the variance swap payoff.  They then show that the log contract can itself be replicated by the particular combination of European puts and calls.  </p>
+<p>That being said, the Quantlib implementation is pretty straight forward.
+I directly adapted the variance swap unittests from Quantlib into PyQL
+(<code>tests/test_variance_swap.py</code>)  You can find an example variance swap using
+the <code>ReplicatingVarianceSwapEngine</code> in that script.</p>
+<p>The important sections are given below</p>
+<div class="highlight"><pre><span></span><span class="c1"># The Variance Swap is constructed</span>
+<span class="c1">#Type, Strike, Notional, Start, End</span>
+<span class="n">strike</span> <span class="o">=</span> <span class="mf">0.04</span>
+<span class="n">notional</span> <span class="o">=</span> <span class="mi">50000</span>
+<span class="n">start</span> <span class="o">=</span> <span class="n">today</span><span class="p">()</span>
+<span class="n">end</span> <span class="o">=</span> <span class="n">start</span> <span class="o">+</span> <span class="nb">int</span><span class="p">(</span><span class="mf">0.246575</span><span class="o">*</span><span class="mi">365</span><span class="o">+</span><span class="mf">0.5</span><span class="p">)</span> <span class="c1"># This is weird value but it was in the Quantlib unittest</span>
+<span class="n">var_swap</span> <span class="o">=</span> <span class="n">VarianceSwap</span><span class="p">(</span><span class="n">SwapType</span><span class="o">.</span><span class="n">Long</span><span class="p">,</span> <span class="mf">0.04</span><span class="p">,</span> <span class="mi">50000</span><span class="p">,</span> <span class="n">start</span><span class="p">,</span> <span class="n">end</span><span class="p">)</span>
+
+<span class="c1"># Option Data used in the replicating engine</span>
+<span class="n">replicating_option_data</span> <span class="o">=</span> <span class="p">[</span>
+   <span class="p">{</span><span class="s1">&#39;type&#39;</span><span class="p">:</span><span class="n">OptionType</span><span class="o">.</span><span class="n">Put</span><span class="p">,</span>  <span class="s1">&#39;strike&#39;</span><span class="p">:</span><span class="mi">50</span><span class="p">,</span>  <span class="s1">&#39;v&#39;</span><span class="p">:</span><span class="mf">0.30</span><span class="p">},</span>
+   <span class="p">{</span><span class="s1">&#39;type&#39;</span><span class="p">:</span><span class="n">OptionType</span><span class="o">.</span><span class="n">Put</span><span class="p">,</span>  <span class="s1">&#39;strike&#39;</span><span class="p">:</span><span class="mi">55</span><span class="p">,</span>  <span class="s1">&#39;v&#39;</span><span class="p">:</span><span class="mf">0.29</span><span class="p">},</span>
+   <span class="p">{</span><span class="s1">&#39;type&#39;</span><span class="p">:</span><span class="n">OptionType</span><span class="o">.</span><span class="n">Put</span><span class="p">,</span>  <span class="s1">&#39;strike&#39;</span><span class="p">:</span><span class="mi">60</span><span class="p">,</span>  <span class="s1">&#39;v&#39;</span><span class="p">:</span><span class="mf">0.28</span><span class="p">},</span>
+   <span class="p">{</span><span class="s1">&#39;type&#39;</span><span class="p">:</span><span class="n">OptionType</span><span class="o">.</span><span class="n">Put</span><span class="p">,</span>  <span class="s1">&#39;strike&#39;</span><span class="p">:</span><span class="mi">65</span><span class="p">,</span>  <span class="s1">&#39;v&#39;</span><span class="p">:</span><span class="mf">0.27</span><span class="p">},</span>
+   <span class="p">{</span><span class="s1">&#39;type&#39;</span><span class="p">:</span><span class="n">OptionType</span><span class="o">.</span><span class="n">Put</span><span class="p">,</span>  <span class="s1">&#39;strike&#39;</span><span class="p">:</span><span class="mi">70</span><span class="p">,</span>  <span class="s1">&#39;v&#39;</span><span class="p">:</span><span class="mf">0.26</span><span class="p">},</span>
+   <span class="p">{</span><span class="s1">&#39;type&#39;</span><span class="p">:</span><span class="n">OptionType</span><span class="o">.</span><span class="n">Put</span><span class="p">,</span>  <span class="s1">&#39;strike&#39;</span><span class="p">:</span><span class="mi">75</span><span class="p">,</span>  <span class="s1">&#39;v&#39;</span><span class="p">:</span><span class="mf">0.25</span><span class="p">},</span>
+   <span class="p">{</span><span class="s1">&#39;type&#39;</span><span class="p">:</span><span class="n">OptionType</span><span class="o">.</span><span class="n">Put</span><span class="p">,</span>  <span class="s1">&#39;strike&#39;</span><span class="p">:</span><span class="mi">80</span><span class="p">,</span>  <span class="s1">&#39;v&#39;</span><span class="p">:</span><span class="mf">0.24</span><span class="p">},</span>
+   <span class="p">{</span><span class="s1">&#39;type&#39;</span><span class="p">:</span><span class="n">OptionType</span><span class="o">.</span><span class="n">Put</span><span class="p">,</span>  <span class="s1">&#39;strike&#39;</span><span class="p">:</span><span class="mi">85</span><span class="p">,</span>  <span class="s1">&#39;v&#39;</span><span class="p">:</span><span class="mf">0.23</span><span class="p">},</span>
+   <span class="p">{</span><span class="s1">&#39;type&#39;</span><span class="p">:</span><span class="n">OptionType</span><span class="o">.</span><span class="n">Put</span><span class="p">,</span>  <span class="s1">&#39;strike&#39;</span><span class="p">:</span><span class="mi">90</span><span class="p">,</span>  <span class="s1">&#39;v&#39;</span><span class="p">:</span><span class="mf">0.22</span><span class="p">},</span>
+   <span class="p">{</span><span class="s1">&#39;type&#39;</span><span class="p">:</span><span class="n">OptionType</span><span class="o">.</span><span class="n">Put</span><span class="p">,</span>  <span class="s1">&#39;strike&#39;</span><span class="p">:</span><span class="mi">95</span><span class="p">,</span>  <span class="s1">&#39;v&#39;</span><span class="p">:</span><span class="mf">0.21</span><span class="p">},</span>
+   <span class="p">{</span><span class="s1">&#39;type&#39;</span><span class="p">:</span><span class="n">OptionType</span><span class="o">.</span><span class="n">Put</span><span class="p">,</span>  <span class="s1">&#39;strike&#39;</span><span class="p">:</span><span class="mi">100</span><span class="p">,</span> <span class="s1">&#39;v&#39;</span><span class="p">:</span><span class="mf">0.20</span><span class="p">},</span>
+   <span class="p">{</span><span class="s1">&#39;type&#39;</span><span class="p">:</span><span class="n">OptionType</span><span class="o">.</span><span class="n">Call</span><span class="p">,</span> <span class="s1">&#39;strike&#39;</span><span class="p">:</span><span class="mi">100</span><span class="p">,</span> <span class="s1">&#39;v&#39;</span><span class="p">:</span><span class="mf">0.20</span><span class="p">},</span>
+   <span class="p">{</span><span class="s1">&#39;type&#39;</span><span class="p">:</span><span class="n">OptionType</span><span class="o">.</span><span class="n">Call</span><span class="p">,</span> <span class="s1">&#39;strike&#39;</span><span class="p">:</span><span class="mi">105</span><span class="p">,</span> <span class="s1">&#39;v&#39;</span><span class="p">:</span><span class="mf">0.19</span><span class="p">},</span>
+   <span class="p">{</span><span class="s1">&#39;type&#39;</span><span class="p">:</span><span class="n">OptionType</span><span class="o">.</span><span class="n">Call</span><span class="p">,</span> <span class="s1">&#39;strike&#39;</span><span class="p">:</span><span class="mi">110</span><span class="p">,</span> <span class="s1">&#39;v&#39;</span><span class="p">:</span><span class="mf">0.18</span><span class="p">},</span>
+   <span class="p">{</span><span class="s1">&#39;type&#39;</span><span class="p">:</span><span class="n">OptionType</span><span class="o">.</span><span class="n">Call</span><span class="p">,</span> <span class="s1">&#39;strike&#39;</span><span class="p">:</span><span class="mi">115</span><span class="p">,</span> <span class="s1">&#39;v&#39;</span><span class="p">:</span><span class="mf">0.17</span><span class="p">},</span>
+   <span class="p">{</span><span class="s1">&#39;type&#39;</span><span class="p">:</span><span class="n">OptionType</span><span class="o">.</span><span class="n">Call</span><span class="p">,</span> <span class="s1">&#39;strike&#39;</span><span class="p">:</span><span class="mi">120</span><span class="p">,</span> <span class="s1">&#39;v&#39;</span><span class="p">:</span><span class="mf">0.16</span><span class="p">},</span>
+   <span class="p">{</span><span class="s1">&#39;type&#39;</span><span class="p">:</span><span class="n">OptionType</span><span class="o">.</span><span class="n">Call</span><span class="p">,</span> <span class="s1">&#39;strike&#39;</span><span class="p">:</span><span class="mi">125</span><span class="p">,</span> <span class="s1">&#39;v&#39;</span><span class="p">:</span><span class="mf">0.15</span><span class="p">},</span>
+   <span class="p">{</span><span class="s1">&#39;type&#39;</span><span class="p">:</span><span class="n">OptionType</span><span class="o">.</span><span class="n">Call</span><span class="p">,</span> <span class="s1">&#39;strike&#39;</span><span class="p">:</span><span class="mi">130</span><span class="p">,</span> <span class="s1">&#39;v&#39;</span><span class="p">:</span><span class="mf">0.14</span><span class="p">},</span>
+   <span class="p">{</span><span class="s1">&#39;type&#39;</span><span class="p">:</span><span class="n">OptionType</span><span class="o">.</span><span class="n">Call</span><span class="p">,</span> <span class="s1">&#39;strike&#39;</span><span class="p">:</span><span class="mi">135</span><span class="p">,</span> <span class="s1">&#39;v&#39;</span><span class="p">:</span><span class="mf">0.13</span><span class="p">},</span>
+<span class="p">]</span>
+
+<span class="c1"># The engine is constructed</span>
+<span class="n">engine</span> <span class="o">=</span> <span class="n">ReplicatingVarianceSwapEngine</span><span class="p">(</span><span class="n">process</span><span class="p">,</span>
+                                       <span class="n">call_strikes</span><span class="p">,</span>
+                                       <span class="n">put_strikes</span><span class="p">,</span>
+                                       <span class="mf">5.0</span><span class="p">)</span> <span class="c1"># dK, shift below lowest put strike</span>
+
+<span class="c1"># attach the engine to the swap</span>
+<span class="n">var_swap</span><span class="o">.</span><span class="n">set_pricing_engine</span><span class="p">(</span><span class="n">engine</span><span class="p">)</span>
+
+<span class="k">print</span><span class="p">(</span><span class="s2">&quot;strike: &quot;</span><span class="p">,</span> <span class="n">var_swap</span><span class="o">.</span><span class="n">strike</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="s2">&quot;postion: &quot;</span><span class="p">,</span> <span class="n">var_swap</span><span class="o">.</span><span class="n">position</span><span class="p">)</span>
+<span class="k">print</span><span class="p">(</span><span class="s2">&quot;variance: &quot;</span><span class="p">,</span> <span class="n">var_swap</span><span class="o">.</span><span class="n">variance</span><span class="p">)</span>
+</pre></div>
+
+
+<p>The output is:</p>
+<div class="highlight"><pre><span></span><span class="n">strike</span><span class="o">:</span> <span class="mf">0.04</span>
+<span class="n">postion</span><span class="o">:</span> <span class="n">SwapType</span><span class="o">.</span><span class="na">Long</span>
+<span class="n">variance</span><span class="o">:</span> <span class="mf">0.0419</span>
+</pre></div>
+
+
+<h2>Deriving the Replicating Portfolio</h2>
+<p>Briefly, from the definition of the variance strike given above, we see that the par strike of a variance swap is the expected realized variance, i.e.</p>
+<div class="math">$$ K_{var} = \frac{1}{T}\mathbf{E}\left[\int^T_0 \sigma^2(t, \dots)dt\right] $$</div>
+<p>The first step in the derivation is to re-write this expression.  We consider a generic Ito process of the following form:</p>
+<div class="math">$$\frac{dS_t}{S_t} = \mu(t, \dots) dt + \sigma(t, \dots) dW_t $$</div>
+<p>Where <span class="math">\(\mu\)</span> and <span class="math">\(\sigma\)</span> can be time or level dependent. Applying Ito's lemma to <span class="math">\(\ln(S_t)\)</span> and subtracting the above equation gives</p>
+<div class="math">$$\frac{dS_t}{S_t} - d\left(\ln(S_t)\right) = \frac{1}{2}\sigma^2dt$$</div>
+<p>We insert this expression into the <span class="math">\(K_{var}\)</span> definition to get</p>
+<div class="math">$$
+\begin{align}
+K_{var} =&amp; \frac{2}{T}\mathbf{E}\left[\int^T_0 \frac{\partial S_t}{S_t} - \ln\left(\frac{S_T}{S_0}\right)\right] \\
+\end{align}
+$$</div>
+<p>Next, we partition the strike domain by introducing a cutoff strike value, <span class="math">\(S_* \in (0, \infty)\)</span>.  In what follows this cutoff will be set to lower bound of put strikes, but for now we leave it arbitrary.</p>
+<p>The allows us the write <span class="math">\(K_{var}\)</span> as</p>
+<div class="math">$$
+\begin{align}
+K_{var} =&amp; \frac{2}{T}\mathbf{E}\left[\int^T_0 \frac{\partial S_t}{S_t} - \frac{S_T- S_*}{S_*}- \ln\left(\frac{S_*}{S_0}\right) + \frac{S_T- S_*}{S_*} -\ln\left(\frac{S_T}{S_*}\right)\right]
+\end{align}
+$$</div>
+<p>We can then use the fact that in the risk neutral measure</p>
+<div class="math">$$
+\mathbf{E}\left[\int^T_0 \frac{\partial S_t}{S_t}dt\right] = rT
+$$</div>
+<p>(i.e. martingales are driftless) Distributing the expectation value gives</p>
+<div class="math">$$
+K_{var} = \frac{2}{T}\left[rT - \left(\frac{S_0}{S_*}e^{rT} - 1\right) - \ln\left(\frac{S_*}{S_0}\right)\right] + e^{rT}\frac{2}{T}\mathbf{E}\left[ \frac{S_T- S_*}{S_*} -\ln\left(\frac{S_T}{S_*}\right)\right]
+$$</div>
+<p>This expression implies that the variance swap can be replicated by an option with the following payoff</p>
+<div class="math">$$
+f(S_T) = \frac{2}{T}\left(\frac{S_T-S_*}{S_*} - \ln\frac{S_T}{S_*}\right) \label{eq1}
+$$</div>
+<p>This option is the so-called <em>log-contract</em>, which obviously only exists in the minds of quants.</p>
+<p>The final trick to recognize that the log-contract can itself be replicated as linear combination of European calls and puts (which thankfully do exist!).  We first consider the strike, <span class="math">\(K\)</span>, as a <em>continuous</em> variable.  We then can build a portfolio that matches the log contract's payoff by weighting the options with the inverse of their strikes.</p>
+<p>Namely, we can show that
+</p>
+<div class="math">$$
+ \frac{S_T- S_*}{S_*} -\ln\left(\frac{S_T}{S_*}\right) = \int^{S_*}_0 dK\frac{\max[K- S(T),0]}{K^2} + \int_{S_*}^{\infty} dK\frac{\max[S(T)- K, 0]}{K^2}
+$$</div>
+<p>So we can approximate the price of the log-contract by expanding the expectation value
+as a sum of European calls and puts</p>
+<div class="math">$$
+\begin{align}
+\mathbf{E}\left[ \frac{S_T- S_*}{S_*} -\ln\left(\frac{S_T}{S_*}\right)\right] &amp;=
+\mathbf{E}\left[ \int^{S_*}_0 dK\frac{\max[K- S(T),0]}{K^2} + \int_{S_*}^{\infty} dK\frac{\max[S(T)- K, 0]}{K^2} \right] \\
+ &amp; =\int^{S_*}_0 \frac{dK}{K^2} \mathbf{E}\left[\max[K- S(T),0]\right] + \int_{S_*}^{\infty} \frac{dK}{K^2}\mathbf{E}\left[\max[S(T)- K, 0]\right] \\
+  &amp; =\int^{S_*}_0 \frac{dK}{K^2} P(K,T) + \int_{S_*}^{\infty} \frac{dK}{K^2}C(K,T) \\
+\end{align}
+$$</div>
+<p>
+<span class="math">\(S_*\)</span> is then set to the put strike lower bound, <span class="math">\(S_*  = K_{Put_1} - dK\)</span>.  In the numerical example given above <span class="math">\(S_*  = 50 - 5 = 45\)</span>.</p>
+<p>Take a look at the PyQL bindings on my <a href="https://github.com/kevingivens/pyql">github</a> page to see how the
+<code>ReplicatingVarianceSwapEngine</code> is implemented.</p>
+<p>See you next time.</p>
+<script type="text/javascript">if (!document.getElementById('mathjaxscript_pelican_#%@#$@#')) {
+    var align = "center",
+        indent = "0em",
+        linebreak = "false";
+
+    if (false) {
+        align = (screen.width < 768) ? "left" : align;
+        indent = (screen.width < 768) ? "0em" : indent;
+        linebreak = (screen.width < 768) ? 'true' : linebreak;
+    }
+
+    var mathjaxscript = document.createElement('script');
+    mathjaxscript.id = 'mathjaxscript_pelican_#%@#$@#';
+    mathjaxscript.type = 'text/javascript';
+    mathjaxscript.src = 'https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.3/latest.js?config=TeX-AMS-MML_HTMLorMML';
+
+    var configscript = document.createElement('script');
+    configscript.type = 'text/x-mathjax-config';
+    configscript[(window.opera ? "innerHTML" : "text")] =
+        "MathJax.Hub.Config({" +
+        "    config: ['MMLorHTML.js']," +
+        "    TeX: { extensions: ['AMSmath.js','AMSsymbols.js','noErrors.js','noUndefined.js'], equationNumbers: { autoNumber: 'none' } }," +
+        "    jax: ['input/TeX','input/MathML','output/HTML-CSS']," +
+        "    extensions: ['tex2jax.js','mml2jax.js','MathMenu.js','MathZoom.js']," +
+        "    displayAlign: '"+ align +"'," +
+        "    displayIndent: '"+ indent +"'," +
+        "    showMathMenu: true," +
+        "    messageStyle: 'normal'," +
+        "    tex2jax: { " +
+        "        inlineMath: [ ['\\\\(','\\\\)'] ], " +
+        "        displayMath: [ ['$$','$$'] ]," +
+        "        processEscapes: true," +
+        "        preview: 'TeX'," +
+        "    }, " +
+        "    'HTML-CSS': { " +
+        "        availableFonts: ['STIX', 'TeX']," +
+        "        preferredFont: 'STIX'," +
+        "        styles: { '.MathJax_Display, .MathJax .mo, .MathJax .mi, .MathJax .mn': {color: 'inherit ! important'} }," +
+        "        linebreaks: { automatic: "+ linebreak +", width: '90% container' }," +
+        "    }, " +
+        "}); " +
+        "if ('default' !== 'default') {" +
+            "MathJax.Hub.Register.StartupHook('HTML-CSS Jax Ready',function () {" +
+                "var VARIANT = MathJax.OutputJax['HTML-CSS'].FONTDATA.VARIANT;" +
+                "VARIANT['normal'].fonts.unshift('MathJax_default');" +
+                "VARIANT['bold'].fonts.unshift('MathJax_default-bold');" +
+                "VARIANT['italic'].fonts.unshift('MathJax_default-italic');" +
+                "VARIANT['-tex-mathit'].fonts.unshift('MathJax_default-italic');" +
+            "});" +
+            "MathJax.Hub.Register.StartupHook('SVG Jax Ready',function () {" +
+                "var VARIANT = MathJax.OutputJax.SVG.FONTDATA.VARIANT;" +
+                "VARIANT['normal'].fonts.unshift('MathJax_default');" +
+                "VARIANT['bold'].fonts.unshift('MathJax_default-bold');" +
+                "VARIANT['italic'].fonts.unshift('MathJax_default-italic');" +
+                "VARIANT['-tex-mathit'].fonts.unshift('MathJax_default-italic');" +
+            "});" +
+        "}";
+
+    (document.body || document.getElementsByTagName('head')[0]).appendChild(configscript);
+    (document.body || document.getElementsByTagName('head')[0]).appendChild(mathjaxscript);
+}
+</script>
+            </div>
+            <!-- /.entry-content -->
+        </article>
+    </section>
+
+        </div>
+        <div class="col-sm-3" id="sidebar">
+            <aside>
+<!-- Sidebar -->
+<section class="well well-sm">
+  <ul class="list-group list-group-flush">
+
+<!-- Sidebar/Social -->
+<li class="list-group-item">
+  <h4><i class="fa fa-home fa-lg"></i><span class="icon-label">Social</span></h4>
+  <ul class="list-group" id="social">
+    <li class="list-group-item"><a href="https://twitter.com/kevinmgivens"><i class="fa fa-twitter-square fa-lg"></i> twitter</a></li>
+    <li class="list-group-item"><a href="https://www.linkedin.com/pub/kevin-m-givens/47/844/275"><i class="fa fa-linkedin-square fa-lg"></i> linkedin</a></li>
+    <li class="list-group-item"><a href="https://github.com/kevingivens"><i class="fa fa-github-square fa-lg"></i> github</a></li>
+  </ul>
+</li>
+<!-- End Sidebar/Social -->
+
+<!-- Sidebar/Categories -->
+<li class="list-group-item">
+  <h4><i class="fa fa-home fa-lg"></i><span class="icon-label">Categories</span></h4>
+  <ul class="list-group" id="categories">
+    <li class="list-group-item">
+      <a href="/category/finance.html"><i class="fa fa-folder-open fa-lg"></i>Finance</a>
+    </li>
+  </ul>
+</li>
+<!-- End Sidebar/Categories -->
+  </ul>
+</section>
+<!-- End Sidebar -->            </aside>
+        </div>
+    </div>
+</div>
+<!-- End Content Container -->
+
+<footer>
+   <div class="container">
+      <hr>
+      <div class="row">
+         <div class="col-xs-10">&copy; 2020 Kevin Givens
+            &middot; Powered by <a href="https://github.com/getpelican/pelican-themes/tree/master/pelican-bootstrap3" target="_blank">pelican-bootstrap3</a>,
+            <a href="http://docs.getpelican.com/" target="_blank">Pelican</a>,
+            <a href="http://getbootstrap.com" target="_blank">Bootstrap</a>         </div>
+         <div class="col-xs-2"><p class="pull-right"><i class="fa fa-arrow-up"></i> <a href="#">Back to top</a></p></div>
+      </div>
+   </div>
+</footer>
+<script src="/theme/js/jquery.min.js"></script>
+
+<!-- Include all compiled plugins (below), or include individual files as needed -->
+<script src="/theme/js/bootstrap.min.js"></script>
+
+<!-- Enable responsive features in IE8 with Respond.js (https://github.com/scottjehl/Respond) -->
+<script src="/theme/js/respond.min.js"></script>
+
+
+
+
+</body>
+</html>
