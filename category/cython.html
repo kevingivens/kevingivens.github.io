@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en" prefix="og: http://ogp.me/ns# fb: https://www.facebook.com/2008/fbml">
 <head>
-    <title>Numerical Methods - Lost in the Lyceum</title>
+    <title>Cython - Lost in the Lyceum</title>
     <!-- Using the latest rendering mode for IE -->
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta charset="utf-8">
@@ -12,7 +12,7 @@
 
 
     <meta name="author" content="Kevin Givens" />
-    <meta name="keywords" content="Numerical Methods" />
+    <meta name="keywords" content="Cython" />
 
     <!-- Open Graph tags -->
         <meta property="og:site_name" content="Lost in the Lyceum" />
@@ -74,20 +74,13 @@ Lost in the Lyceum            </a>
     <div class="row">
         <div class="col-sm-9">
             <article>
-                <h2><a href="/simulating-the-heston-process.html">Simulating the Heston Process</a></h2>
-                <div class="summary"><p>Summary: We investigate different discretization schemes for the Heston Process, looking at issues of numerical bias and
-ease of implementation</p>
-<p>In today's post, I will examine a few issues related to numerical simulation of the Heston model.
-As a quick reminder, the Heston process is a stochastic volatility model defined …</p>
-                    <a class="btn btn-default btn-xs" href="/simulating-the-heston-process.html">more ...</a>
-                </div>
-            </article>
-            <hr/>
-            <article>
-                <h2><a href="/devito-and-option-pricing.html">Devito and Option Pricing</a></h2>
-                <div class="summary"><p>Summary: Devito allows users to build finite difference schemes in python and "compile-down" to optimized C++</p>
-<p>Finite difference methods have a long history in quantitative finance.  They are the preferred technique to price and risk manage instruments based on low dimensional probabilistic models that lack analytic solutions.  To implement the …</p>
-                    <a class="btn btn-default btn-xs" href="/devito-and-option-pricing.html">more ...</a>
+                <h2><a href="/automating-the-binding-process-in-cython.html">Automating the Binding Process in Cython</a></h2>
+                <div class="summary"><p>Summary: We discuss an approach towards automating the writing of Cython bindings</p>
+<h3>Part 1, Overview</h3>
+<p>Cython is a wonderful tool for writing Python bindings.  It gives the developer a
+tremendous amount of control over both code performance and semantics in a language
+that is a superset of Python. It's no …</p>
+                    <a class="btn btn-default btn-xs" href="/automating-the-binding-process-in-cython.html">more ...</a>
                 </div>
             </article>
             <hr/>
@@ -138,7 +131,7 @@ As a quick reminder, the Heston process is a stochastic volatility model defined
    <div class="container">
       <hr>
       <div class="row">
-         <div class="col-xs-10">&copy; 2018 Kevin Givens
+         <div class="col-xs-10">&copy; 2020 Kevin Givens
             &middot; Powered by <a href="https://github.com/getpelican/pelican-themes/tree/master/pelican-bootstrap3" target="_blank">pelican-bootstrap3</a>,
             <a href="http://docs.getpelican.com/" target="_blank">Pelican</a>,
             <a href="http://getbootstrap.com" target="_blank">Bootstrap</a>         </div>
