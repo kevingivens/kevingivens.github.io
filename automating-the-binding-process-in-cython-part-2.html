@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en" prefix="og: http://ogp.me/ns# fb: https://www.facebook.com/2008/fbml">
+<head>
+    <title>Automating the Binding Process in Cython, Part 2 - Lost in the Lyceum</title>
+    <!-- Using the latest rendering mode for IE -->
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+
+    <link href="/theme/images/icons/favicon.ico" rel="icon">
+
+<link rel="canonical" href="/automating-the-binding-process-in-cython-part-2.html">
+
+        <meta name="author" content="Kevin Givens" />
+        <meta name="keywords" content="Python,Cython,Binding" />
+        <meta name="description" content="Summary: We continue to discuss an approach towards automating the writing of Cython bindings. We focus on generating pyx files. Part 2, Overview Welcome back. In the previous post, I discussed generating pxd files (Cython C-level declarations) from C header files using pycparser. In this post, I want to explore …" />
+
+        <meta property="og:site_name" content="Lost in the Lyceum" />
+        <meta property="og:type" content="article"/>
+        <meta property="og:title" content="Automating the Binding Process in Cython, Part 2"/>
+        <meta property="og:url" content="/automating-the-binding-process-in-cython-part-2.html"/>
+        <meta property="og:description" content="Summary: We continue to discuss an approach towards automating the writing of Cython bindings. We focus on generating pyx files. Part 2, Overview Welcome back. In the previous post, I discussed generating pxd files (Cython C-level declarations) from C header files using pycparser. In this post, I want to explore …"/>
+        <meta property="article:published_time" content="2020-04-27" />
+            <meta property="article:section" content="Cython" />
+            <meta property="article:tag" content="Python" />
+            <meta property="article:tag" content="Cython" />
+            <meta property="article:tag" content="Binding" />
+            <meta property="article:author" content="Kevin Givens" />
+
+
+
+    <!-- Bootstrap -->
+        <link rel="stylesheet" href="/theme/css/bootstrap.flatly.min.css" type="text/css"/>
+    <link href="/theme/css/font-awesome.min.css" rel="stylesheet">
+
+    <link href="/theme/css/pygments/default.css" rel="stylesheet">
+    <link href="/theme/tipuesearch/tipuesearch.css" rel="stylesheet">
+    <link rel="stylesheet" href="/theme/css/style.css" type="text/css"/>
+
+
+
+</head>
+<body>
+
+<div class="navbar navbar-default navbar-fixed-top" role="navigation">
+    <div class="container">
+        <div class="navbar-header">
+            <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-ex1-collapse">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a href="/" class="navbar-brand">
+Lost in the Lyceum            </a>
+        </div>
+        <div class="collapse navbar-collapse navbar-ex1-collapse">
+            <ul class="nav navbar-nav">
+                         <li><a href="/pages/about.html">
+                             About
+                          </a></li>
+            </ul>
+            <ul class="nav navbar-nav navbar-right">
+              <li><span>
+                <form class="navbar-search" action="/search.html">
+                  <input type="text" class="search-query" placeholder="Search" name="q" id="tipue_search_input" required>
+                </form></span>
+              </li>
+            </ul>
+        </div>
+        <!-- /.navbar-collapse -->
+    </div>
+</div> <!-- /.navbar -->
+
+<!-- Banner -->
+<!-- End Banner -->
+
+<!-- Content Container -->
+<div class="container">
+    <div class="row">
+        <div class="col-sm-9">
+    <section id="content">
+        <article>
+            <header class="page-header">
+                <h1>
+                    <a href="/automating-the-binding-process-in-cython-part-2.html"
+                       rel="bookmark"
+                       title="Permalink to Automating the Binding Process in Cython, Part 2">
+                        Automating the Binding Process in Cython, Part 2
+                    </a>
+                </h1>
+            </header>
+            <div class="entry-content">
+                <div class="panel">
+                    <div class="panel-body">
+<footer class="post-info">
+    <span class="label label-default">Date</span>
+    <span class="published">
+        <i class="fa fa-calendar"></i><time datetime="2020-04-27T19:10:00-04:00"> Mon 27 April 2020</time>
+    </span>
+
+
+
+
+
+<span class="label label-default">Tags</span>
+	<a href="/tag/python.html">Python</a>
+        /
+	<a href="/tag/cython.html">Cython</a>
+        /
+	<a href="/tag/binding.html">Binding</a>
+    
+</footer><!-- /.post-info -->                    </div>
+                </div>
+                <p>Summary: We continue to discuss an approach towards automating the writing of Cython
+bindings. We focus on generating pyx files.</p>
+<h3>Part 2, Overview</h3>
+<p>Welcome back. In the previous <a href="/post8.md">post</a>, I discussed generating pxd files (Cython C-level declarations)
+from C header files using <a href="https://github.com/eliben/pycparser">pycparser</a>.  In this post, I want to explore using Cython's
+own parser to generate the corresponding Python wrapper classes and functions in a
+pyx files.  As always, you can find the companion code to this post on my <a href="https://github.com/kevingivens/Blog">github page</a>.</p>
+<h2>Using Cython's Parser</h2>
+<p>As a reminder from the last post, we are generating Python bindings for a C
+implementation of a trie data structure from the <a href="https://github.com/fragglet/c-algorithms">c-algorithms library</a>
+(Incidentally, code from this same library is used as an example in the official Cython.
+<a href="https://cython.readthedocs.io/en/latest/src/tutorial/clibraries.html">documentation</a>.
+There's a lot of overlap between that documentation of some of the topics discussed here).</p>
+<p>Cython's parser in written in Python.  It's fairly straight-forward to use, though
+not terribly well documented.  As with any conventional parser, each Cython declaration is
+represented as a node in an abstract syntax tree.  The parser reads
+Cython code in <code>pyx</code>, <code>pxd</code>, or <code>pxi</code> files and generates C code that implements
+the CPython API.   </p>
+<p>Our approach, borrowed from the autowrap <a href="https://github.com/uweschmitt/autowrap">project</a>,
+is to use Cython's <code>pxd</code> reading capabilities to generate <code>pyx</code> files. After all,
+for most Cython projects, one tries to maintain some type of consistent standard
+when implementing wrapper functions and classes.  Using a parser just implements
+these standards automatically.</p>
+<h3>Compiler Pipeline</h3>
+<p>Now for some code.  Cython's pxd parser can be accessed programatically.  In the snippet below,
+we parse a pxd file from the command line and return an AST.</p>
+<div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">Cython.Compiler.CmdLine</span> <span class="kn">import</span> <span class="n">parse_command_line</span>
+<span class="kn">from</span> <span class="nn">Cython.Compiler.Main</span> <span class="kn">import</span> <span class="n">create_default_resultobj</span><span class="p">,</span> <span class="n">CompilationSource</span>
+<span class="kn">from</span> <span class="nn">Cython.Compiler</span> <span class="kn">import</span> <span class="n">Pipeline</span>
+<span class="kn">from</span> <span class="nn">Cython.Compiler.Scanning</span> <span class="kn">import</span> <span class="n">FileSourceDescriptor</span>
+
+
+<span class="k">def</span> <span class="nf">parse_pxd_file</span><span class="p">(</span><span class="n">path</span><span class="p">):</span>
+    <span class="n">options</span><span class="p">,</span> <span class="n">sources</span> <span class="o">=</span> <span class="n">parse_command_line</span><span class="p">([</span><span class="s2">&quot;&quot;</span><span class="p">,</span> <span class="n">path</span><span class="p">])</span>
+
+    <span class="n">path</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">abspath</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="n">basename</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">basename</span><span class="p">(</span><span class="n">path</span><span class="p">)</span>
+    <span class="n">name</span><span class="p">,</span> <span class="n">ext</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">splitext</span><span class="p">(</span><span class="n">basename</span><span class="p">)</span>
+
+    <span class="n">source_desc</span> <span class="o">=</span> <span class="n">FileSourceDescriptor</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">basename</span><span class="p">)</span>
+    <span class="n">source</span> <span class="o">=</span> <span class="n">CompilationSource</span><span class="p">(</span><span class="n">source_desc</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">os</span><span class="o">.</span><span class="n">getcwd</span><span class="p">())</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">create_default_resultobj</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">options</span><span class="p">)</span>
+
+    <span class="n">context</span> <span class="o">=</span> <span class="n">options</span><span class="o">.</span><span class="n">create_context</span><span class="p">()</span>
+    <span class="n">pipeline</span> <span class="o">=</span> <span class="n">Pipeline</span><span class="o">.</span><span class="n">create_pyx_pipeline</span><span class="p">(</span><span class="n">context</span><span class="p">,</span> <span class="n">options</span><span class="p">,</span> <span class="n">result</span><span class="p">)</span>
+    <span class="n">context</span><span class="o">.</span><span class="n">setup_errors</span><span class="p">(</span><span class="n">options</span><span class="p">,</span> <span class="n">result</span><span class="p">)</span>
+    <span class="c1"># root of the AST/parse tree</span>
+    <span class="n">root</span> <span class="o">=</span> <span class="n">pipeline</span><span class="p">[</span><span class="mi">0</span><span class="p">](</span><span class="n">source</span><span class="p">)</span>
+</pre></div>
+
+
+<p>We use the function <code>parse_command_line</code> to pass the source code located at <code>path</code> to
+the Cython compiler with no compiler flags turned on. We then create a pxy compiler
+<code>Pipeline</code> from a <code>CompilationSource</code> objects and a default <code>options context</code>.<br>
+This pipeline is like a regular compiler pipeline through which phases of data
+transformation and optimizations occur.  For our purposes, we will just walk the AST starting
+from the root node.</p>
+<p>Parsing our trie.pxd file from the previous post generates the following AST, which is schematically shown below
+(we leave off most leaves for presentation purposes):</p>
+<p><img alt="png" src="/post9_files/trie_ast.png"></p>
+<h2>Pxd Visitor</h2>
+<p>We implement a Pxd Visitor object following the protocol defined in Cython.  In particular,
+our PxdVisitor implements a <code>visit</code> method for every type of node in the AST.  For instance</p>
+<div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">visit_CStructOrUnionDefNode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node</span><span class="p">):</span>
+    <span class="c1"># extract info from node</span>
+    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">visitchildren</span><span class="p">(</span><span class="n">node</span><span class="p">)</span>
+</pre></div>
+
+
+<p>visits the <code>CStructOrUnionDef</code> type node in the AST representing a union or struct declarations.</p>
+<div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">visit_CTypeDefNode</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">node</span><span class="p">):</span>
+    <span class="c1"># extract info from node</span>
+    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">visitchildren</span><span class="p">(</span><span class="n">node</span><span class="p">)</span>
+</pre></div>
+
+
+<p>visits <code>ctypedefs</code> and so on.</p>
+<p>Our Visitor class walks all the nodes in the tree and collects information that we need to build the
+corresponding Python wrapper classes and functions.  For a given struct (in our example
+the <code>Trie</code> struct), the visitor collects all the C functions that will become Python class methods.
+These are identified by the fact that their names match the name of the struct.  For example, <code>trie_new</code> and
+<code>trie_insert</code> are functions for creating <code>Trie</code> structs and inserting data into them respectively.</p>
+<p>Once all the C functions are mapped to their corresponding structs, the Python classes can be built using string templates along
+with functions for managing type conversions between Python and C.  We will explore this approach below.</p>
+<h2>Python Class Lifetime Management</h2>
+<p>The C structs defined in the pxd files should be wrapped by Python classes, as these are
+the closest language equivalent.  Ideally, the Python classes will manage the
+lifetime of the corresponding C struct.  This means that the C struct will be
+created when the Python class is created and it will be destroyed and its memory
+released when the Python class is destroyed.  In this way, the C struct is
+"buried under the hood", so the speak, and the user of the Python class is essentially
+oblivious to its existence.</p>
+<p>For our trie example, the Python wrapper class looks like the following:</p>
+<div class="highlight"><pre><span></span><span class="k">cimport</span> <span class="nn">_trie</span>
+
+<span class="k">cdef</span> <span class="k">class</span> <span class="nf">Trie</span><span class="p">:</span>
+
+    <span class="k">cdef</span> <span class="kt">_trie</span>.<span class="kt">Trie</span>* <span class="nf">_this_ptr</span>
+
+    <span class="k">def</span> <span class="nf">__cinit__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_this_ptr</span> <span class="o">=</span> <span class="n">_trie</span><span class="o">.</span><span class="n">trie_new</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_this_ptr</span> <span class="ow">is</span> <span class="bp">NULL</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">MemoryError</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">__dealloc__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_this_ptr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">NULL</span><span class="p">:</span>
+            <span class="n">_trie</span><span class="o">.</span><span class="n">trie_free</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_this_ptr</span><span class="p">)</span>
+</pre></div>
+
+
+<p>This ensures that the lifetime of the underlying C Trie struct is tied to the lifetime
+of the Python Trie class.</p>
+<h2>Wrapping Functions</h2>
+<p>Wrapping C functions is simple in principle.  The idea is to cast the Python
+objects from the function signature into their nearest C equivalent type,
+then call the underlying C function via the classes' internal pointer and finally convert any
+returned C objects back to Python types.  Wrapping functions is essentially an exercise in
+managing type conversions between C and Python.</p>
+<p>However, in practice, this can be a difficult task for a compiler to achieve. For
+instance, in our Trie example the <code>insert</code> method has the following C signature</p>
+<div class="highlight"><pre><span></span><span class="kt">int</span> <span class="nf">trie_insert</span><span class="p">(</span><span class="n">Trie</span> <span class="o">*</span><span class="n">trie</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">key</span><span class="p">,</span> <span class="n">TrieValue</span> <span class="n">value</span><span class="p">);</span>
+</pre></div>
+
+
+<p>The <code>Trie *trie</code> can be replaced with <code>self.this_ptr</code>. The <code>char* key</code> argument
+can be replaced with a Python string (more on this below). TrieValue is a typedef of <code>void*</code>,
+which is C approach to generic programming. From the Python side, we have a
+few choices in terms preserving this generacy.</p>
+<p>One approach would be to declare <code>value</code> to be a generic Python type <code>object</code> and then attempt to cast it to a <code>&lt;void*&gt;</code>
+in the C function call, i.e.</p>
+<div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">insert</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="nb">object</span> <span class="n">value</span><span class="p">);</span>
+    <span class="k">return</span><span class="p">&lt;</span><span class="kt">int</span><span class="p">&gt;</span> <span class="n">_trie</span><span class="o">.</span><span class="n">trie_insert</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">this_ptr</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="o">&lt;</span><span class="n">void</span><span class="o">*&gt;</span><span class="n">value</span><span class="p">)</span>
+</pre></div>
+
+
+<p>However this could easily fail if the user passed in a nonsensical value object.</p>
+<p>The other approach, as advocated by the Cython <a href="https://cython.readthedocs.io/en/latest/src/tutorial/clibraries.html">documentation</a>,
+is to specify a concrete type in the Python function call, for instance, int or double.
+This breaks type generacy but prevents runtime errors.  </p>
+<p>Interestingly, this is also the approach used by autowrap to handle C++ templates.  In autowrap,
+the user can specify the concrete Python type they wish to implement using a compiler directive.  This eases the burdon of
+having to implement highly redundant Python classes for every concrete Python type one wishes to use.
+I may implement a compiler directive like this at some point in the future.</p>
+<p>As for the <code>char *</code> in the C function, exposing a Python <code>str</code> (unicode in Python 3) is
+thoroughly in the Cython documentation.  We just implement the type conversion directly.  </p>
+<p>So a naive Python wrapper would look like the following<sup id="fnref:1"><a class="footnote-ref" href="#fn:1">1</a></sup></p>
+<div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">insert</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">str</span> <span class="n">key</span><span class="p">,</span> <span class="nb">int</span> <span class="n">value</span><span class="p">):</span>
+    <span class="n">py_byte_str</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s">&#39;UTF-8&#39;</span><span class="p">)</span>
+    <span class="k">cdef</span> <span class="kt">char</span>* <span class="nf">c_key</span> <span class="o">=</span> <span class="n">py_byte_str</span>
+    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_this_ptr</span><span class="o">.</span><span class="n">trie_insert</span><span class="p">(</span><span class="n">Trie</span> <span class="o">*</span><span class="n">trie</span><span class="p">,</span> <span class="n">c_key</span><span class="p">,</span> <span class="o">&lt;</span><span class="n">void</span> <span class="o">*&gt;</span><span class="n">value</span><span class="p">)</span>
+</pre></div>
+
+
+<p>There is one more problem with this approach, namely that the returned <code>int</code> is
+not really meant to be an integer, per se.  It's an int from a C function call
+indicating failure by a 0 and success by a positive value.  This is one of C's (limited)
+approach to runtime error handling. Clearly, a parser just looking at the pxd
+return type cannot distinguish between an int of this type and a regular int.</p>
+<p>Cython provides an alternative type, <code>bint</code>, as in binary int, that can be used
+for these types of function calls.  A <code>bint</code> auto-converts to a Python <code>bool</code>
+instead of an <code>int</code>.  So for our pxd parser to pick it up, we would have to
+manually update our pxd file from</p>
+<div class="highlight"><pre><span></span><span class="kt">int</span> <span class="nf">trie_insert</span><span class="p">(</span><span class="n">Trie</span> <span class="o">*</span><span class="n">trie</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">key</span><span class="p">,</span> <span class="n">TrieValue</span> <span class="n">value</span><span class="p">);</span>
+</pre></div>
+
+
+<p>to</p>
+<div class="highlight"><pre><span></span><span class="n">bint</span> <span class="nf">trie_insert</span><span class="p">(</span><span class="n">Trie</span> <span class="o">*</span><span class="n">trie</span><span class="p">,</span> <span class="kt">char</span> <span class="o">*</span><span class="n">key</span><span class="p">,</span> <span class="n">TrieValue</span> <span class="n">value</span><span class="p">);</span>
+</pre></div>
+
+
+<p>The returned <code>bint</code>'s value should be checked and an exception should be raised if it
+is false.  So am improved wrapper look like the following</p>
+<div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">insert</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">str</span> <span class="n">key</span><span class="p">,</span> <span class="nb">int</span> <span class="n">value</span><span class="p">):</span>
+    <span class="n">py_byte_str</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s">&#39;UTF-8&#39;</span><span class="p">)</span>
+    <span class="k">cdef</span> <span class="kt">char</span>* <span class="nf">c_key</span> <span class="o">=</span> <span class="n">py_byte_str</span>
+    <span class="k">if</span> <span class="ow">not</span> <span class="n">_trie</span><span class="o">.</span><span class="n">trie_insert</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_thisptr</span><span class="p">,</span> <span class="n">c_key</span><span class="p">,</span> <span class="o">&lt;</span><span class="n">void</span> <span class="o">*&gt;</span><span class="n">value</span><span class="p">):</span>
+        <span class="k">raise</span> <span class="ne">MemoryError</span><span class="p">()</span>
+</pre></div>
+
+
+<h2>Python Protocols and Special Methods</h2>
+<p>As an easier wrapping example, the length of the <code>trie</code> struct can be determined via the
+following function</p>
+<div class="highlight"><pre><span></span><span class="kt">unsigned</span> <span class="kt">int</span> <span class="nf">trie_num_entries</span><span class="p">(</span><span class="n">Trie</span> <span class="o">*</span><span class="n">trie</span><span class="p">);</span>
+</pre></div>
+
+
+<p>Our python wrapper is simply</p>
+<div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">num_enties</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">_trie</span><span class="o">.</span><span class="n">trie_num_entries</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_this_ptr</span><span class="p">)</span>
+</pre></div>
+
+
+<p>Clearly, Python users would expect a <code>__len__()</code> special method instead of <code>num_entries()</code>.
+We can either allow users to adjust the function name manually after generating the pyx file
+or directly map <code>num_enties</code> to <code>__len__</code> in the pxd parser. We'll use a direct mapping
+for now but it's by no means a general solution.  </p>
+<p>So our length method would look like the following</p>
+<div class="highlight"><pre><span></span><span class="k">def</span> <span class="nf">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+    <span class="k">return</span> <span class="n">_trie</span><span class="o">.</span><span class="n">trie_num_entries</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_this_ptr</span><span class="p">)</span>
+</pre></div>
+
+
+<p>This problem can emerge for any C functions that implements Python protocol functionality,
+such as <code>__get__()</code>, <code>__set__()</code>, <code>__getitem__(key)</code>, <code>__setitem__(key, value)</code>, etc.</p>
+<h2>Handling Includes</h2>
+<p>Includes should be one of the simple aspects of the parser.  However, there is
+one subtlety that needs to be addressed.  In particular, Cython has a convention
+whereby for any pyx file, say <code>foo.pyx</code>, all C declarations from a pxd file with
+the same name, e.g. <code>foo.pxd</code>, are automatically included at compile time.  This can
+cause a name collision if we wish to give our Python classes and functions the same
+name in Python as they have in the underlying C library.</p>
+<p>One approach to avoiding name collisions is to first name the pxd file <code>_foo.pxd</code>
+(add a leading underscore) to prevent it from being automatically included in <code>foo.pyx</code>.
+Then rename the imported C declarations with a leading underscore in the pyx file.<br>
+This will prevent C and Python names from colliding in the pyx file.</p>
+<h2>Putting it All Together</h2>
+<p>So, running our pyx generator and manually replacing <code>void*</code> and <code>bint</code>
+we get the following Python wrapper class</p>
+<div class="highlight"><pre><span></span><span class="k">cimport</span> <span class="nn">trie</span>
+
+<span class="k">cdef</span> <span class="k">class</span> <span class="nf">Trie</span><span class="p">:</span>
+
+    <span class="k">cdef</span> <span class="kt">trie</span>.<span class="kt">Trie</span>* <span class="nf">_this_ptr</span>
+
+    <span class="k">def</span> <span class="nf">__cinit__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_this_ptr</span> <span class="o">=</span> <span class="n">trie</span><span class="o">.</span><span class="n">trie_new</span><span class="p">()</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_this_ptr</span> <span class="ow">is</span> <span class="bp">NULL</span><span class="p">:</span>
+            <span class="k">raise</span> <span class="ne">MemoryError</span><span class="p">()</span>
+
+    <span class="k">def</span> <span class="nf">__dealloc__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_this_ptr</span> <span class="ow">is</span> <span class="ow">not</span> <span class="bp">NULL</span><span class="p">:</span>
+            <span class="n">trie</span><span class="o">.</span><span class="n">trie_free</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_this_ptr</span><span class="p">)</span>
+
+    <span class="k">cdef</span> <span class="nf">insert</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">str</span> <span class="n">key</span><span class="p">,</span> <span class="nb">int</span> <span class="n">value</span><span class="p">):</span>
+        <span class="n">py_byte_str</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s">&#39;UTF-8&#39;</span><span class="p">)</span>
+        <span class="k">cdef</span> <span class="kt">char</span>* <span class="nf">c_key</span> <span class="o">=</span> <span class="n">py_byte_str</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">trie</span><span class="o">.</span><span class="n">trie_insert</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_thisptr</span><span class="p">,</span> <span class="n">c_key</span><span class="p">,</span> <span class="o">&lt;</span><span class="n">void</span><span class="o">*&gt;</span><span class="n">value</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">MemoryError</span><span class="p">()</span>
+
+
+    <span class="k">cdef</span> <span class="nf">insert_binary</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">str</span> <span class="n">key</span><span class="p">,</span> <span class="nb">int</span> <span class="n">key_length</span><span class="p">,</span> <span class="nb">int</span> <span class="n">value</span><span class="p">):</span>
+        <span class="n">py_byte_str</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s">&#39;UTF-8&#39;</span><span class="p">)</span>
+        <span class="k">cdef</span> <span class="kt">char</span>* <span class="nf">c_key</span> <span class="o">=</span> <span class="n">py_byte_str</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">trie</span><span class="o">.</span><span class="n">trie_insert</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_thisptr</span><span class="p">,</span> <span class="n">c_key</span><span class="p">,</span> <span class="o">&lt;</span><span class="n">void</span><span class="o">*&gt;</span><span class="n">value</span><span class="p">):</span>
+            <span class="k">raise</span> <span class="ne">MemoryError</span><span class="p">()</span>
+
+
+    <span class="k">cdef</span> <span class="nf">lookup</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">str</span> <span class="n">key</span><span class="p">):</span>
+        <span class="n">py_byte_str</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s">&#39;UTF-8&#39;</span><span class="p">)</span>
+        <span class="k">cdef</span> <span class="kt">char</span>* <span class="nf">c_key</span> <span class="o">=</span> <span class="n">py_byte_str</span>
+        <span class="k">return</span> <span class="p">&lt;</span><span class="kt">int</span><span class="p">&gt;</span><span class="n">trie</span><span class="o">.</span><span class="n">trie_lookup</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_this_ptr</span><span class="p">,</span> <span class="n">c_key</span><span class="p">)</span>
+
+
+    <span class="k">cdef</span> <span class="nf">lookup_binary</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">str</span> <span class="n">key</span><span class="p">,</span> <span class="nb">int</span> <span class="n">key_length</span><span class="p">):</span>
+        <span class="n">py_byte_str</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s">&#39;UTF-8&#39;</span><span class="p">)</span>
+        <span class="k">cdef</span> <span class="kt">char</span>* <span class="nf">c_key</span> <span class="o">=</span> <span class="n">py_byte_str</span>
+        <span class="k">return</span> <span class="p">&lt;</span><span class="kt">int</span><span class="p">&gt;</span><span class="n">trie</span><span class="o">.</span><span class="n">trie_lookup_binary</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_this_ptr</span><span class="p">,</span> <span class="n">c_key</span><span class="p">,</span> <span class="p">&lt;</span><span class="kt">int</span><span class="p">&gt;</span><span class="n">key_length</span><span class="p">)</span>
+
+
+    <span class="k">cdef</span> <span class="nf">remove</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">str</span> <span class="n">key</span><span class="p">):</span>
+        <span class="n">py_byte_str</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s">&#39;UTF-8&#39;</span><span class="p">)</span>
+        <span class="k">cdef</span> <span class="kt">char</span>* <span class="nf">c_key</span> <span class="o">=</span> <span class="n">py_byte_str</span>
+        <span class="k">return</span> <span class="p">&lt;</span><span class="kt">int</span><span class="p">&gt;</span><span class="n">trie</span><span class="o">.</span><span class="n">trie_remove</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_this_ptr</span><span class="p">,</span> <span class="n">c_key</span><span class="p">)</span>
+
+
+    <span class="k">cdef</span> <span class="nf">remove_binary</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">str</span> <span class="n">key</span><span class="p">,</span> <span class="nb">int</span> <span class="n">key_length</span><span class="p">):</span>
+        <span class="n">py_byte_str</span> <span class="o">=</span> <span class="n">key</span><span class="o">.</span><span class="n">encode</span><span class="p">(</span><span class="s">&#39;UTF-8&#39;</span><span class="p">)</span>
+        <span class="k">cdef</span> <span class="kt">char</span>* <span class="nf">c_key</span> <span class="o">=</span> <span class="n">py_byte_str</span>
+        <span class="k">return</span> <span class="p">&lt;</span><span class="kt">int</span><span class="p">&gt;</span><span class="n">trie</span><span class="o">.</span><span class="n">trie_remove_binary</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_this_ptr</span><span class="p">,</span> <span class="n">c_key</span><span class="p">,</span> <span class="p">&lt;</span><span class="kt">int</span><span class="p">&gt;</span><span class="n">key_length</span><span class="p">)</span>
+
+
+    <span class="k">cdef</span> <span class="nf">__len__</span><span class="p">(</span><span class="bp">self</span><span class="p">):</span>
+        <span class="k">return</span> <span class="p">&lt;</span><span class="kt">int</span><span class="p">&gt;</span><span class="n">trie</span><span class="o">.</span><span class="n">trie_num_entries</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_this_ptr</span><span class="p">)</span>
+</pre></div>
+
+
+<h2>Final Words</h2>
+<p>There's much more work to do on the pxy generator.  For instance, the following items still need to be
+handled</p>
+<ul>
+<li>Enums</li>
+<li>Compiler directives</li>
+<li>Comments</li>
+<li>More special function mapping</li>
+<li>Exception Handling</li>
+</ul>
+<p>In my next post, I will revisit this process for C++.  In particular, I'll use
+libClang to parse C++ header files along with autowrap for Pyx generation.  See you next time.</p>
+<div class="footnote">
+<hr>
+<ol>
+<li id="fn:1">
+<p>See Cython's <a href="https://cython.readthedocs.io/en/latest/src/tutorial/strings.html">documentation</a> on the need for the temporary <code>py_byte_str</code> object&#160;<a class="footnote-backref" href="#fnref:1" title="Jump back to footnote 1 in the text">&#8617;</a></p>
+</li>
+</ol>
+</div>
+            </div>
+            <!-- /.entry-content -->
+        </article>
+    </section>
+
+        </div>
+        <div class="col-sm-3" id="sidebar">
+            <aside>
+<!-- Sidebar -->
+<section class="well well-sm">
+  <ul class="list-group list-group-flush">
+
+<!-- Sidebar/Social -->
+<li class="list-group-item">
+  <h4><i class="fa fa-home fa-lg"></i><span class="icon-label">Social</span></h4>
+  <ul class="list-group" id="social">
+    <li class="list-group-item"><a href="https://twitter.com/kevinmgivens"><i class="fa fa-twitter-square fa-lg"></i> twitter</a></li>
+    <li class="list-group-item"><a href="https://www.linkedin.com/pub/kevin-m-givens/47/844/275"><i class="fa fa-linkedin-square fa-lg"></i> linkedin</a></li>
+    <li class="list-group-item"><a href="https://github.com/kevingivens"><i class="fa fa-github-square fa-lg"></i> github</a></li>
+  </ul>
+</li>
+<!-- End Sidebar/Social -->
+
+<!-- Sidebar/Categories -->
+<li class="list-group-item">
+  <h4><i class="fa fa-home fa-lg"></i><span class="icon-label">Categories</span></h4>
+  <ul class="list-group" id="categories">
+    <li class="list-group-item">
+      <a href="/category/coding.html"><i class="fa fa-folder-open fa-lg"></i>Coding</a>
+    </li>
+    <li class="list-group-item">
+      <a href="/category/cython.html"><i class="fa fa-folder-open fa-lg"></i>Cython</a>
+    </li>
+    <li class="list-group-item">
+      <a href="/category/finance.html"><i class="fa fa-folder-open fa-lg"></i>Finance</a>
+    </li>
+  </ul>
+</li>
+<!-- End Sidebar/Categories -->
+  </ul>
+</section>
+<!-- End Sidebar -->            </aside>
+        </div>
+    </div>
+</div>
+<!-- End Content Container -->
+
+<footer>
+   <div class="container">
+      <hr>
+      <div class="row">
+         <div class="col-xs-10">&copy; 2020 Kevin Givens
+            &middot; Powered by <a href="https://github.com/getpelican/pelican-themes/tree/master/pelican-bootstrap3" target="_blank">pelican-bootstrap3</a>,
+            <a href="http://docs.getpelican.com/" target="_blank">Pelican</a>,
+            <a href="http://getbootstrap.com" target="_blank">Bootstrap</a>         </div>
+         <div class="col-xs-2"><p class="pull-right"><i class="fa fa-arrow-up"></i> <a href="#">Back to top</a></p></div>
+      </div>
+   </div>
+</footer>
+<script src="/theme/js/jquery.min.js"></script>
+
+<!-- Include all compiled plugins (below), or include individual files as needed -->
+<script src="/theme/js/bootstrap.min.js"></script>
+
+<!-- Enable responsive features in IE8 with Respond.js (https://github.com/scottjehl/Respond) -->
+<script src="/theme/js/respond.min.js"></script>
+
+
+
+
+</body>
+</html>
